@@ -1,5 +1,5 @@
 {
-  "pollMinutes": 30,
+  "pollMinutes": 360,
   "notifyOnEveryCheck": true,
   "notifyOnChange": true,
   "discordWebhookUrl": "https://discord.com/api/webhooks/1476944726430191656/Cvu4sNW-Y6PQobJp3kSEFHv_K4q5htDDEuhWGNrW8jbOJjno2yWNL__cw-1MyIMXZdKE",
