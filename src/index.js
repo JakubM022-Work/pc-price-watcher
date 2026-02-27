@@ -2,7 +2,7 @@ require("dotenv").config();
 
 const { loadConfig } = require("./config");
 const { readState, writeState } = require("./state");
-const { sendDiscord } = require("./discord");
+const { sendDiscord, buildFancyReport, buildChangeAlert } = require("./discord");
 const { launchContext, saveStorage, closeAll } = require("./browser");
 const { fetchPriceSmart, formatPLN } = require("./ceneo/ceneo");
 
@@ -54,20 +54,17 @@ async function runOnce(cfg) {
   writeState(cfg.statePath, state);
 
   if (cfg.notifyOnChange && changes.length > 0) {
-    const lines = changes.map(c => {
-      const dir = c.to < c.from ? "⬇️" : "⬆️";
-      return `${dir} **${c.name}**: ${formatPLN(c.from)} → ${formatPLN(c.to)}\n${c.url}`;
-    });
-    await sendDiscord(cfg.discordWebhookUrl, `💸 **Zmiana cen (${changes.length})**\n\n${lines.join("\n\n")}`);
+    const payload = buildChangeAlert({ changes });
+    await sendDiscord(cfg.discordWebhookUrl, payload);
   }
 
   if (cfg.notifyOnEveryCheck) {
-    const now = new Date().toLocaleString("pl-PL");
-    const lines = results.map(r => {
-      if (!r.ok) return `⚠️ **${r.item.name}**: ${r.error}\n${r.item.url}`;
-      return `✅ **${r.item.name}**: ${formatPLN(r.priceGrosze)}\n${r.item.url}`;
+    const payload = buildFancyReport({
+      results,
+      title: "Raport cen",
+      accentColor: 0x5865f2 // Discord blurple
     });
-    await sendDiscord(cfg.discordWebhookUrl, `📦 **Raport cen – ${now}**\n\n${lines.join("\n\n")}`);
+    await sendDiscord(cfg.discordWebhookUrl, payload);
   }
 }
 
