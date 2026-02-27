@@ -1,0 +1,29 @@
+{
+  "pollMinutes": 30,
+  "notifyOnEveryCheck": true,
+  "notifyOnChange": true,
+  "discordWebhookUrl": "https://discord.com/api/webhooks/1476944726430191656/Cvu4sNW-Y6PQobJp3kSEFHv_K4q5htDDEuhWGNrW8jbOJjno2yWNL__cw-1MyIMXZdKE",
+
+  "items": [
+    {
+      "name": "AMD Ryzen 5 7500F TRAY",
+      "url": "https://www.x-kom.pl/p/1175398-procesor-amd-ryzen-5-amd-ryzen-5-7500f-tray.html?utm_source=ceneo&utm_medium=comparison&utm_campaign=ceneo_click&sm=comparision&ceneo_cid=ab3b4d3f-a265-822c-515f-62820ff92f2e",
+      "selector": "span[data-name='productPrice'], .product-price, .price"
+    },
+    {
+      "name": "GPU POWERCOLOR Radeon RX 7800 XT Hellhound 16GB",
+      "url": "https://www.mediaexpert.pl/komputery-i-tablety/podzespoly-komputerowe/karty-graficzne/karta-graficzna-powercolor-radeon-hellhound-rx-7800-xt-16gb?utm_source=Ceneo&utm_medium=cpc&utm_content=587985&utm_campaign=2026-02&utm_term=Karty-graficzne&ceneo_spo=false&ceneo_cid=48b9d111-b71b-289c-8bc4-ed7ae22b57dd",
+      "selector": "span[data-name='productPrice'], .product-price, .price"
+    },
+    {
+      "name": "RAM Corsair 32GB (2x16GB) 6000MHz CL36 Vengeance Intel XMP",
+      "url": "https://www.x-kom.pl/p/1259029-pamiec-ram-ddr5-corsair-32gb-2x16gb-6000mhz-cl36-vengeance-intel-xmp.html",
+      "selector": "span[data-name='productPrice'], .product-price, .price"
+    },
+    {
+      "name": "GPU RTX 5070 Windforce OC 12GB GDDR7 DLSS4",
+      "url": "https://www.x-kom.pl/p/1318534-karta-graficzna-nvidia-gigabyte-geforce-rtx-5070-windforce-oc-12gb-gddr7-dlss4.html?utm_source=ceneo&utm_medium=comparison&utm_campaign=ceneo_click&sm=comparision&ceneo_cid=cb1746e5-0008-8f29-5f43-92dbb8e50281",
+      "selector": "span[data-name='productPrice'], .product-price, .price"
+    }
+  ]
+}
