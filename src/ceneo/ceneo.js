@@ -117,6 +117,17 @@ async function extractCeneoPrice(page) {
   return null;
 }
 
+async function tryGetOgImage(page) {
+  try {
+    const loc = page.locator('meta[property="og:image"]').first();
+    if (await loc.count()) {
+      const url = await loc.getAttribute("content");
+      return url || null;
+    }
+  } catch {}
+  return null;
+}
+
 async function fetchPriceSmart({ item, headlessAttempt, launchContext, saveStorage, closeAll, storagePath }) {
   // HEADLESS attempt
   let s1 = await launchContext({ headless: headlessAttempt, storagePath });
@@ -130,6 +141,7 @@ async function fetchPriceSmart({ item, headlessAttempt, launchContext, saveStora
       try { await s1.page.waitForLoadState("networkidle", { timeout: 8000 }); } catch {}
 
       const res = await extractCeneoPrice(s1.page);
+      if (res) res.imageUrl = await tryGetOgImage(s1.page);
       await saveStorage(s1.ctx, storagePath);
       return res;
     }
@@ -153,6 +165,7 @@ async function fetchPriceSmart({ item, headlessAttempt, launchContext, saveStora
     try { await s2.page.waitForLoadState("networkidle", { timeout: 8000 }); } catch {}
 
     const res = await extractCeneoPrice(s2.page);
+    if (res) res.imageUrl = await tryGetOgImage(s2.page);
     await saveStorage(s2.ctx, storagePath);
     return res;
   } finally {
@@ -162,5 +175,6 @@ async function fetchPriceSmart({ item, headlessAttempt, launchContext, saveStora
 
 module.exports = {
   fetchPriceSmart,
-  formatPLN
+  formatPLN,
+  tryGetOgImage
 };
