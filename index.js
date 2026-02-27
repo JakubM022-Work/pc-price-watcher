@@ -2,9 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const { chromium } = require("playwright");
+const readline = require("readline");
 
 const CONFIG_PATH = path.join(__dirname, "config.json");
 const STATE_PATH = path.join(__dirname, "state.json");
+const STORAGE_PATH = path.join(__dirname, "storageState.json");
 
 function readJson(p) {
   const raw = fs.readFileSync(p, "utf8").trim();
@@ -13,6 +15,16 @@ function readJson(p) {
 }
 function writeJson(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
+}
+
+function waitForEnter(promptText) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(promptText, () => {
+      rl.close();
+      resolve();
+    });
+  });
 }
 
 function parsePriceToGrosze(text) {
@@ -24,7 +36,6 @@ function parsePriceToGrosze(text) {
 
   let num = m[1].replace(/\s+/g, "");
 
-  // PL: 2399,00
   if (num.includes(",") && !num.includes(".")) {
     const [zl, gr = "00"] = num.split(",");
     const zlDigits = zl.replace(/\D/g, "");
@@ -33,7 +44,6 @@ function parsePriceToGrosze(text) {
     return Number(zlDigits) * 100 + Number(grDigits);
   }
 
-  // EN: 2399.00
   if (num.includes(".") && !num.includes(",")) {
     const [zl, gr = "00"] = num.split(".");
     const zlDigits = zl.replace(/\D/g, "");
@@ -42,7 +52,6 @@ function parsePriceToGrosze(text) {
     return Number(zlDigits) * 100 + Number(grDigits);
   }
 
-  // mixed: 2.399,00 -> 2399.00
   num = num.replace(/\./g, "").replace(",", ".");
   if (num.includes(".")) {
     const [zl, gr = "00"] = num.split(".");
@@ -69,23 +78,22 @@ async function sendDiscord(webhookUrl, content) {
 }
 
 async function acceptCookiesIfPresent(page) {
-  // Ceneo potrafi mieć różne bannery, więc robimy "best effort"
   const candidates = [
+    "#onetrust-accept-btn-handler",
     "text=Zaakceptuj wszystkie",
     "text=Akceptuj wszystkie",
     "text=ZAAKCEPTUJ WSZYSTKIE",
     "text=Akceptuj",
     "text=Zgadzam się",
     "button:has-text('Akceptuj')",
-    "button:has-text('Zaakceptuj')",
-    "#onetrust-accept-btn-handler"
+    "button:has-text('Zaakceptuj')"
   ];
 
   for (const sel of candidates) {
     try {
-      const el = await page.locator(sel).first();
+      const el = page.locator(sel).first();
       if (await el.count()) {
-        await el.click({ timeout: 1000 });
+        await el.click({ timeout: 1200 });
         await page.waitForTimeout(600);
         break;
       }
@@ -93,38 +101,66 @@ async function acceptCookiesIfPresent(page) {
   }
 }
 
-async function getPriceFromCeneo(page, url) {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+async function isHumanCheckPage(page) {
+  const title = (await page.title().catch(() => "")).toLowerCase();
+  const html = await page.content().catch(() => "");
+  return (
+    title.includes("security verification") ||
+    title.includes("just a moment") ||
+    html.toLowerCase().includes("verify you are human") ||
+    html.toLowerCase().includes("cf-turnstile") ||
+    html.toLowerCase().includes("challenge-platform") ||
+    html.toLowerCase().includes("cloudflare")
+  );
+}
+
+async function getCeneoPrice(page, item) {
+  await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(1200);
 
+  // jeśli wpadło w Cloudflare – czekamy na użytkownika
+  if (await isHumanCheckPage(page)) {
+    console.log(`\n[HUMAN CHECK] ${item.name}`);
+    console.log("W przeglądarce kliknij: 'Potwierdź, że jesteś człowiekiem' / 'Przejdź dalej'.");
+    console.log("Gdy zobaczysz normalną stronę produktu na Ceneo, wróć do terminala.\n");
+    await waitForEnter("Wciśnij Enter, gdy przejdziesz weryfikację... ");
+    await page.waitForTimeout(1000);
+  }
+
   await acceptCookiesIfPresent(page);
-  await page.waitForTimeout(600);
 
-  // Dokładnie jak w Twoim HTML:
-  // .product-offer-summary__price-box ... .value + .penny
-  const valueLoc = page.locator(".product-offer-summary__price-box .price .value").first();
-  const pennyLoc = page.locator(".product-offer-summary__price-box .price .penny").first();
+  // Poczekaj chwilę na dociągnięcie elementów
+  try { await page.waitForLoadState("networkidle", { timeout: 8000 }); } catch {}
 
-  const hasValue = await valueLoc.count();
-  const hasPenny = await pennyLoc.count();
+  // Szukamy ceny w kilku możliwych miejscach (Ceneo ma różne layouty)
+  const selectors = [
+    ".product-offer-summary__price-box .price .value",
+    ".product-offer-summary__price-box .value",
+    ".price-format .value",
+    ".product-offer-summary__price-box .price .penny",
+    ".price-format .penny"
+  ];
 
-  if (hasValue) {
-    const value = (await valueLoc.innerText()).trim(); // np. "2 013"
-    const penny = hasPenny ? (await pennyLoc.innerText()).trim() : ",00"; // np. ",99"
+  // Najlepszy wariant: value + penny
+  const valueLoc = page.locator(".product-offer-summary__price-box .price .value, .product-offer-summary__price-box .value, .price-format .value").first();
+  const pennyLoc = page.locator(".product-offer-summary__price-box .price .penny, .product-offer-summary__price-box .penny, .price-format .penny").first();
 
-    // penny może być ",99" albo "99" — ujednolicamy do ",99"
+  if (await valueLoc.count()) {
+    const value = (await valueLoc.innerText()).trim();      // np. "2 013"
+    const penny = (await pennyLoc.count()) ? (await pennyLoc.innerText()).trim() : ",00"; // ",99"
     const pennyNorm = penny.startsWith(",") ? penny : `,${penny.replace(/\D/g, "").padStart(2, "0")}`;
 
     const textPrice = `${value}${pennyNorm} zł`;
     const price = parsePriceToGrosze(textPrice);
-    if (price != null) {
-      return { priceGrosze: price, raw: textPrice, method: "ceneo:summaryBox" };
-    }
+    if (price != null) return { priceGrosze: price, raw: textPrice, method: "ceneo:dom:value+penny" };
   }
 
-  // Fallback: jakby layout się zmienił, spróbuj regexem z HTML
+  // Fallback: regex z HTML
   const html = await page.content();
-  const m = html.match(/(\d{1,3}(?:\s\d{3})*),(\d{2})\s*zł/i);
+  const m =
+    html.match(/(\d{1,3}(?:\s\d{3})*),(\d{2})\s*zł/i) ||
+    html.match(/(\d{1,3}(?:\s\d{3})*)\s+(\d{2})\s*zł/i);
+
   if (m) {
     const zl = m[1].replace(/\s+/g, "");
     const gr = m[2];
@@ -139,8 +175,10 @@ async function runOnce() {
   const cfg = readJson(CONFIG_PATH);
   const state = fs.existsSync(STATE_PATH) ? readJson(STATE_PATH) : {};
 
-  const browser = await chromium.launch({ headless: true });
-  const ctx = await browser.newContext();
+  const browser = await chromium.launch({ headless: false }); // HUMAN-IN-THE-LOOP
+  const ctx = await browser.newContext(
+    fs.existsSync(STORAGE_PATH) ? { storageState: STORAGE_PATH } : {}
+  );
   const page = await ctx.newPage();
 
   const results = [];
@@ -150,9 +188,9 @@ async function runOnce() {
     if (!item?.url) continue;
 
     try {
-      const res = await getPriceFromCeneo(page, item.url);
+      const res = await getCeneoPrice(page, item);
       if (!res) {
-        results.push({ item, ok: false, error: "Nie udało się znaleźć ceny na Ceneo" });
+        results.push({ item, ok: false, error: "Nie udało się znaleźć ceny (po weryfikacji nadal brak)" });
         continue;
       }
 
@@ -178,6 +216,9 @@ async function runOnce() {
   }
 
   writeJson(STATE_PATH, state);
+
+  // zapis sesji (żeby captcha wyskakiwała rzadziej)
+  await ctx.storageState({ path: STORAGE_PATH });
 
   if (cfg.notifyOnChange && changes.length > 0) {
     const lines = changes.map(c => {
@@ -205,6 +246,9 @@ async function main() {
   const pollMs = (cfg.pollMinutes ?? 30) * 60 * 1000;
 
   await runOnce();
+
+  // UWAGA: przy human-in-the-loop 30 min to spam i częstsze captcha.
+  // Ale zostawiam jak chcesz — tylko pamiętaj, że może wołać Cię do kompa.
   setInterval(() => runOnce().catch(err => console.error("runOnce error:", err)), pollMs);
 }
 

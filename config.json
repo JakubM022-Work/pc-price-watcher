@@ -5,17 +5,8 @@
   "discordWebhookUrl": "https://discord.com/api/webhooks/1476944726430191656/Cvu4sNW-Y6PQobJp3kSEFHv_K4q5htDDEuhWGNrW8jbOJjno2yWNL__cw-1MyIMXZdKE",
 
   "items": [
-    {
-      "name": "AMD Ryzen 5 7500F (Ceneo)",
-      "url": "https://www.ceneo.pl/157751992"
-    },
-    {
-      "name": "RTX 4070 SUPER (Ceneo)",
-      "url": "https://www.ceneo.pl/163107768"
-    },
-    {
-      "name": "RAM 32GB DDR5 6000 (Ceneo)",
-      "url": "https://www.ceneo.pl/173445205"
-    }
+    { "name": "AMD Ryzen 5 7500F (Ceneo)", "url": "https://www.ceneo.pl/157751992" },
+    { "name": "RTX 4070 SUPER (Ceneo)", "url": "https://www.ceneo.pl/163107768" },
+    { "name": "RAM 32GB DDR5 6000 (Ceneo)", "url": "https://www.ceneo.pl/173445205" }
   ]
 }
