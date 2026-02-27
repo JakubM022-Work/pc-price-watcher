@@ -1,3 +1,6 @@
 node_modules/
-state.json
+.env
 storageState.json
+state.json
+debug_*.html
+debug_*.png
