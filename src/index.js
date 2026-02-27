@@ -41,7 +41,7 @@ async function runOnce(cfg) {
         raw: res.raw
       };
 
-      results.push({ item, ok: true, priceGrosze: res.priceGrosze, prevGrosze: prev });
+      results.push({ item, ok: true, priceGrosze: res.priceGrosze, prevGrosze: prev,  imageUrl: res.imageUrl || null });
 
       if (prev != null && prev !== res.priceGrosze) {
         changes.push({ name: item.name, url: item.url, from: prev, to: res.priceGrosze });

@@ -118,13 +118,48 @@ async function extractCeneoPrice(page) {
 }
 
 async function tryGetOgImage(page) {
+  // daj stronie chwilę na dociągnięcie head/meta
+  try { await page.waitForLoadState("networkidle", { timeout: 5000 }); } catch {}
+
+  const makeAbs = (u) => {
+    if (!u) return null;
+    if (u.startsWith("//")) return "https:" + u;
+    if (u.startsWith("http://") || u.startsWith("https://")) return u;
+    if (u.startsWith("/")) return "https://www.ceneo.pl" + u;
+    return u;
+  };
+
+  // 1) og:image
   try {
     const loc = page.locator('meta[property="og:image"]').first();
     if (await loc.count()) {
-      const url = await loc.getAttribute("content");
-      return url || null;
+      const u = makeAbs(await loc.getAttribute("content"));
+      if (u && u.startsWith("http")) return u;
     }
   } catch {}
+
+  // 2) image_src
+  try {
+    const loc = page.locator('link[rel="image_src"]').first();
+    if (await loc.count()) {
+      const u = makeAbs(await loc.getAttribute("href"));
+      if (u && u.startsWith("http")) return u;
+    }
+  } catch {}
+
+  // 3) pierwszy sensowny img
+  try {
+    const u = await page.evaluate(() => {
+      const imgs = Array.from(document.images || []);
+      const best = imgs
+        .map(img => img.currentSrc || img.src || "")
+        .filter(u => u.startsWith("http"))
+        .find(u => /(\.jpg|\.jpeg|\.png|\.webp)/i.test(u));
+      return best || null;
+    });
+    return makeAbs(u);
+  } catch {}
+
   return null;
 }
 
