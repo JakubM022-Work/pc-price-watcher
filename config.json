@@ -6,20 +6,16 @@
 
   "items": [
     {
-      "name": "AMD Ryzen 5 7500F TRAY (x-kom)",
-      "url": "https://www.x-kom.pl/p/1175398-procesor-amd-ryzen-5-amd-ryzen-5-7500f-tray.html",
-      "strategy": "xkom"
+      "name": "AMD Ryzen 5 7500F (Ceneo)",
+      "url": "https://www.ceneo.pl/157751992"
     },
     {
-      "name": "Corsair 32GB 6000 CL36 (x-kom)",
-      "url": "https://www.x-kom.pl/p/1259029-pamiec-ram-ddr5-corsair-32gb-2x16gb-6000mhz-cl36-vengeance-intel-xmp.html",
-      "strategy": "xkom"
+      "name": "RTX 4070 SUPER (Ceneo)",
+      "url": "https://www.ceneo.pl/163107768"
     },
     {
-      "name": "RX 7800 XT Hellhound (Media Expert)",
-      "url": "https://www.mediaexpert.pl/komputery-i-tablety/podzespoly-komputerowe/karty-graficzne/karta-graficzna-powercolor-radeon-hellhound-rx-7800-xt-16gb",
-      "strategy": "mediaexpert",
-      "anchorText": "Karta graficzna POWERCOLOR Radeon RX 7800 XT Hellhound 16GB"
+      "name": "RAM 32GB DDR5 6000 (Ceneo)",
+      "url": "https://www.ceneo.pl/173445205"
     }
   ]
 }

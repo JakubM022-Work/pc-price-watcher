@@ -52,7 +52,6 @@ function parsePriceToGrosze(text) {
     return Number(zlDigits) * 100 + Number(grDigits);
   }
 
-  // integer
   const zlDigits = num.replace(/\D/g, "");
   if (!zlDigits) return null;
   return Number(zlDigits) * 100;
@@ -69,102 +68,70 @@ async function sendDiscord(webhookUrl, content) {
   await axios.post(webhookUrl, { content }, { timeout: 15000 });
 }
 
-async function acceptCookies(page, strategy) {
-  // Media Expert - OneTrust
-  if (strategy === "mediaexpert") {
+async function acceptCookiesIfPresent(page) {
+  // Ceneo potrafi mieć różne bannery, więc robimy "best effort"
+  const candidates = [
+    "text=Zaakceptuj wszystkie",
+    "text=Akceptuj wszystkie",
+    "text=ZAAKCEPTUJ WSZYSTKIE",
+    "text=Akceptuj",
+    "text=Zgadzam się",
+    "button:has-text('Akceptuj')",
+    "button:has-text('Zaakceptuj')",
+    "#onetrust-accept-btn-handler"
+  ];
+
+  for (const sel of candidates) {
     try {
-      await page.waitForSelector("#onetrust-accept-btn-handler", { timeout: 4000 });
-      await page.click("#onetrust-accept-btn-handler");
-      await page.waitForTimeout(800);
-      return;
+      const el = await page.locator(sel).first();
+      if (await el.count()) {
+        await el.click({ timeout: 1000 });
+        await page.waitForTimeout(600);
+        break;
+      }
     } catch {}
   }
-
-  // x-kom – przycisk "W porządku"
-  if (strategy === "xkom") {
-    try {
-      await page.waitForSelector('button[data-name="AcceptPermissionButton"]', { timeout: 4000 });
-      await page.click('button[data-name="AcceptPermissionButton"]');
-      await page.waitForTimeout(800);
-      return;
-    } catch {}
-  }
-
-  // Fallbacki (gdyby coś się zmieniło)
-  try { await page.click('text=ZAAKCEPTUJ WSZYSTKIE', { timeout: 1500 }); } catch {}
-  try { await page.click('text=W porządku', { timeout: 1500 }); } catch {}
-  try { await page.click('text=Akceptuj', { timeout: 1500 }); } catch {}
-  await page.waitForTimeout(300);
 }
 
-function saveDebugFiles(itemName, html, screenshotBuffer) {
-  const safe = itemName.replace(/[^a-z0-9]+/gi, "_").slice(0, 70);
-  fs.writeFileSync(`debug_${safe}.html`, html, "utf8");
-  if (screenshotBuffer) fs.writeFileSync(`debug_${safe}.png`, screenshotBuffer);
-}
+async function getPriceFromCeneo(page, url) {
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForTimeout(1200);
 
-function extractPriceFromHtmlByStrategy(html, item) {
-  if (!html) return null;
+  await acceptCookiesIfPresent(page);
+  await page.waitForTimeout(600);
 
-  // x-kom: często w HTML występuje "Cena: 539,00 zł"
-  if (item.strategy === "xkom") {
-    const m = html.match(/Cena:\s*([0-9\s]+,\d{2})\s*zł/i);
-    if (!m) return null;
-    const price = parsePriceToGrosze(m[1] + " zł");
-    return price != null ? { price, raw: m[0], selectorUsed: "html-regex:xkom" } : null;
-  }
+  // Dokładnie jak w Twoim HTML:
+  // .product-offer-summary__price-box ... .value + .penny
+  const valueLoc = page.locator(".product-offer-summary__price-box .price .value").first();
+  const pennyLoc = page.locator(".product-offer-summary__price-box .price .penny").first();
 
-  // Media Expert: różne formaty, czasem "2 242 01 zł" albo "2 899,00 zł"
-  if (item.strategy === "mediaexpert") {
-    const anchor = item.anchorText || "";
-    let idx = anchor ? html.indexOf(anchor) : -1;
-    if (idx === -1) idx = 0;
+  const hasValue = await valueLoc.count();
+  const hasPenny = await pennyLoc.count();
 
-    const chunk = html.slice(idx, idx + 12000);
+  if (hasValue) {
+    const value = (await valueLoc.innerText()).trim(); // np. "2 013"
+    const penny = hasPenny ? (await pennyLoc.innerText()).trim() : ",00"; // np. ",99"
 
-    const m =
-      chunk.match(/(\d{1,3}(?:\s\d{3})*)\s+(\d{2})\s*zł/i) ||    // "2 242 01 zł"
-      chunk.match(/(\d{1,3}(?:\s\d{3})*),(\d{2})\s*zł/i);        // "2 899,00 zł"
+    // penny może być ",99" albo "99" — ujednolicamy do ",99"
+    const pennyNorm = penny.startsWith(",") ? penny : `,${penny.replace(/\D/g, "").padStart(2, "0")}`;
 
-    if (!m) return null;
-
-    const zl = m[1].replace(/\s+/g, "");
-    const gr = (m[2] || "00").padStart(2, "0");
-    const price = parsePriceToGrosze(`${zl},${gr} zł`);
-    return price != null ? { price, raw: m[0], selectorUsed: "html-regex:mediaexpert" } : null;
-  }
-
-  return null;
-}
-
-async function getPrice(page, item) {
-  await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(1500);
-
-  await acceptCookies(page, item.strategy);
-  await page.waitForTimeout(800);
-
-  const html = await page.content();
-
-  // 1) spróbuj strategii sklepu (najstabilniej)
-  const byStrategy = extractPriceFromHtmlByStrategy(html, item);
-  if (byStrategy) return byStrategy;
-
-  // 2) fallback: jeżeli w config dodasz selector, nadal zadziała
-  if (item.selector) {
-    const selectors = item.selector.split(",").map(s => s.trim()).filter(Boolean);
-    for (const sel of selectors) {
-      const el = await page.$(sel);
-      if (!el) continue;
-      const raw = (await el.innerText()).trim();
-      const price = parsePriceToGrosze(raw);
-      if (price != null) return { price, raw, selectorUsed: sel };
+    const textPrice = `${value}${pennyNorm} zł`;
+    const price = parsePriceToGrosze(textPrice);
+    if (price != null) {
+      return { priceGrosze: price, raw: textPrice, method: "ceneo:summaryBox" };
     }
   }
 
-  // 3) debug — zapisz html i screenshot, żeby zobaczyć co Playwright widzi
-  const shot = await page.screenshot({ fullPage: true }).catch(() => null);
-  saveDebugFiles(item.name, html, shot);
+  // Fallback: jakby layout się zmienił, spróbuj regexem z HTML
+  const html = await page.content();
+  const m = html.match(/(\d{1,3}(?:\s\d{3})*),(\d{2})\s*zł/i);
+  if (m) {
+    const zl = m[1].replace(/\s+/g, "");
+    const gr = m[2];
+    const price = parsePriceToGrosze(`${zl},${gr} zł`);
+    if (price != null) return { priceGrosze: price, raw: m[0], method: "ceneo:regex" };
+  }
+
   return null;
 }
 
@@ -172,7 +139,7 @@ async function runOnce() {
   const cfg = readJson(CONFIG_PATH);
   const state = fs.existsSync(STATE_PATH) ? readJson(STATE_PATH) : {};
 
-  const browser = await chromium.launch({ headless: true }); // jak chcesz widzieć okno -> false
+  const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
 
@@ -180,12 +147,12 @@ async function runOnce() {
   const changes = [];
 
   for (const item of cfg.items) {
-    if (!item.url) continue;
+    if (!item?.url) continue;
 
     try {
-      const res = await getPrice(page, item);
+      const res = await getPriceFromCeneo(page, item.url);
       if (!res) {
-        results.push({ item, ok: false, error: "Nie znaleziono ceny (strategia/selektor nie pasuje)" });
+        results.push({ item, ok: false, error: "Nie udało się znaleźć ceny na Ceneo" });
         continue;
       }
 
@@ -194,16 +161,16 @@ async function runOnce() {
 
       state[key] = {
         name: item.name,
-        lastPriceGrosze: res.price,
+        lastPriceGrosze: res.priceGrosze,
         lastSeen: new Date().toISOString(),
-        selectorUsed: res.selectorUsed,
+        method: res.method,
         raw: res.raw
       };
 
-      results.push({ item, ok: true, priceGrosze: res.price, prevGrosze: prev });
+      results.push({ item, ok: true, priceGrosze: res.priceGrosze, prevGrosze: prev });
 
-      if (prev != null && prev !== res.price) {
-        changes.push({ name: item.name, url: item.url, from: prev, to: res.price });
+      if (prev != null && prev !== res.priceGrosze) {
+        changes.push({ name: item.name, url: item.url, from: prev, to: res.priceGrosze });
       }
     } catch (e) {
       results.push({ item, ok: false, error: String(e) });
@@ -212,7 +179,6 @@ async function runOnce() {
 
   writeJson(STATE_PATH, state);
 
-  // powiadomienia o zmianach
   if (cfg.notifyOnChange && changes.length > 0) {
     const lines = changes.map(c => {
       const dir = c.to < c.from ? "⬇️" : "⬆️";
@@ -221,7 +187,6 @@ async function runOnce() {
     await sendDiscord(cfg.discordWebhookUrl, `💸 **Zmiana cen (${changes.length})**\n\n${lines.join("\n\n")}`);
   }
 
-  // raport po każdym sprawdzeniu (testowo)
   if (cfg.notifyOnEveryCheck) {
     const now = new Date().toLocaleString("pl-PL");
     const lines = results.map(r => {
